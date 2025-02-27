@@ -1,0 +1,244 @@
+@workspace Could you go through the drakes_dna repository in detail. Explain me the role of every scirpt and function and how it is connected to other scripts. Also explain me how it obtains and processes data used for training the diffusion model.
+
+Workspace
+Collecting workspace information
+
+DRAKES DNA Repository Analysis
+Overview
+DRAKES (DNA Representation And Knowledge-Enhanced Sequences) is a diffusion-based model for generating functional DNA sequences, specifically regulatory elements like enhancers. The codebase is built on MDLM (Masked Diffusion Language Model) but adapted for genomic data instead of natural language.
+
+Key Components & Scripts
+1. Core Model Implementation Files
+diffusion_gosai_update.py
+Purpose: Implements the main diffusion model for DNA sequence generation
+Key Classes:
+Diffusion: Core model that handles forward and reverse diffusion processes
+Main Functions:
+_sample: Generate DNA sequences through the reverse diffusion process
+get_likelihood: Calculate likelihood of sequences
+controlled_sample_SMC, controlled_sample_TDS, controlled_sample_CG: Methods for different guided generation strategies
+diffusion_gosai_cfg.py
+Purpose: Variant of the diffusion model that implements classifier-free guidance
+Key Addition: Support for conditioning generation on class labels or attributes
+dnaconv.py
+Purpose: Defines neural network architecture for DNA sequence modeling
+Key Classes:
+CNNModel: CNN-based backbone used in the diffusion model
+GaussianFourierProjection: Time embedding for the diffusion model
+Dense: Basic building block for fully connected layers
+2. Data Processing Files
+dataloader_gosai.py
+Purpose: Handles data loading and preprocessing for DNA sequences
+Key Functions:
+get_dataloaders_gosai: Creates training, validation, and test dataloaders
+dna_detokenize: Converts tokenized sequences back to DNA strings (ACGT)
+batch_dna_detokenize: Batch version of detokenization
+3. Training Scripts
+main_gosai.py
+Purpose: Entry point for training the diffusion model
+Key Functions:
+main: Initializes configuration with Hydra and starts training
+_train: Sets up PyTorch Lightning trainer and executes training
+_load_from_checkpoint: Loads model from previously saved checkpoint
+_print_config: Utility to display and save configuration
+train_oracle.py
+Purpose: Trains an oracle model to predict biological properties of DNA sequences
+Uses: Enformer-based architecture to predict enhancer activity scores
+Data Source: Chromosomal DNA sequences with measured biological properties
+finetune_reward_bp.py
+Purpose: Fine-tunes the diffusion model using rewards from the oracle
+Key Technique: Uses reward-guided optimization to steer model toward generating functional DNA sequences
+4. Evaluation Files
+eval.ipynb
+Purpose: Jupyter notebook for evaluating generated DNA sequences
+Main Tasks:
+Generate sequences using different sampling strategies (standard, CFG, CG, SMC, TDS)
+Evaluate sequences for biological properties using the oracle model
+Analyze k-mer distributions and motif enrichment
+Calculate metrics like ATAC-seq accessibility predictions
+oracle.py
+Purpose: Interface to pre-trained biological property predictors
+Key Functions:
+get_gosai_oracle: Loads oracle model for predicting enhancer activities
+cal_gosai_pred, cal_gosai_pred_new: Calculate activity predictions for generated sequences
+cal_atac_pred, cal_atac_pred_new: Predict chromatin accessibility
+count_kmers: Statistical analysis of k-mer occurrences in sequences
+5. Utility Files
+utils.py
+Purpose: General utility functions
+Key Functions:
+Logging utilities
+Random seed setting
+Configuration helpers
+Data Flow & Processing
+Data Acquisition
+Source Data:
+
+From Gosai et al. (2023) dataset stored in BASE_PATH/mdlm/gosai_data/dataset.csv.gz
+Contains ~735,156 enhancer sequences with measured activity levels
+Data Structure:
+
+DNA sequences (640 base pairs long)
+Associated biological activity measurements (hepg2, k562, sknsh tissue types)
+Chromosome information for train/test splitting
+Data Processing Pipeline
+Tokenization:
+
+DNA sequences are tokenized into a vocabulary of 5 tokens (4 nucleotides + padding)
+Unlike text models, there's no subword tokenization - each token is a single nucleotide
+Dataset Creation:
+
+Chromosomes 1-11 used for training
+Chromosomes 12-22 used for evaluation
+Data is split based on chromosomes to avoid genomic proximity bias
+Dataloader Configuration:
+
+Implemented in dataloader_gosai.py
+Creates batches of tokenized sequences
+Handles padding and masking as needed
+Augmentation:
+
+No explicit augmentation, but diffusion process implicitly creates noisy versions of sequences
+Model Training Workflow
+Phase 1: Pretraining
+Initialize CNN-based diffusion model
+Train on DNA sequences using denoising objective
+Save pretrained checkpoint in outputs_gosai/pretrained.ckpt
+Phase 2: Oracle Training
+Train Enformer-based predictor on labeled sequences
+Optimize for regression of biological activity scores
+Save oracle in reward_oracle_eval.ckpt and reward_oracle_ft.ckpt
+Phase 3: Fine-tuning
+Load pretrained diffusion model
+Fine-tune using rewards from the oracle
+Save fine-tuned model in reward_bp_results_final/finetuned.ckpt
+Phase 4: Evaluation
+Generate sequences using various sampling strategies
+Evaluate biological properties using oracle model
+Compare with real high-expression sequences
+Analyze motif occurrence and k-mer distributions
+Guided Generation Methods
+The repository implements several advanced sampling techniques:
+
+Classifier-Free Guidance (CFG): Uses an implicit classifier to guide generation
+Classifier Guidance (CG): Uses explicit classifier to guide diffusion
+Sequential Monte Carlo (SMC): Weighted resampling for guided generation
+Trajectory Density Sampling (TDS): Geometric approach for guided sampling
+Each method represents a different strategy for optimizing DNA sequences toward desired properties (enhancer activity).
+
+Connections Between Components
+main_gosai.py uses dataloader_gosai.py to load data and initializes diffusion_gosai_update.py for model creation
+train_oracle.py creates a reward model that's used by finetune_reward_bp.py
+oracle.py provides evaluation interfaces used in eval.ipynb
+Generated sequences from diffusion_gosai_update.py are converted back to DNA through functions in dataloader_gosai.py
+Models rely on architectures defined in dnaconv.py
+This repository represents a sophisticated application of diffusion models to biological sequence design, with a focus on creating functional DNA regulatory elements that optimize specific biological properties.
+
+
+More notes:
+GitHub Copilot
+DRAKES: Fine-tuning Masked Diffusion Models for DNA Design
+Paper Overview
+DRAKES (DNA Representation And Knowledge-Enhanced Sequences) is a framework for generating functional DNA sequences using diffusion models. The paper introduces techniques to fine-tune pre-trained masked diffusion models to generate DNA sequences with specific biological properties, particularly focusing on enhancer elements with high expression in specific cell lines.
+
+DNA Sequence Generation Components
+1. Diffusion Model Architecture
+DRAKES uses a masked diffusion model specifically designed for DNA sequences. Looking at the implementation in diffusion_gosai_update.py, the model follows the standard diffusion framework with:
+
+Forward process: Gradually adding noise to DNA sequences
+Reverse process: Denoising step by step to generate new sequences
+Adaptation of SUBS (Subset-Based Parameterization) for categorical data like DNA
+2. Training Data
+The model is trained on DNA sequences from the Gosai et al. (2023) dataset, which contains:
+
+~735,156 enhancer sequences (640bp long)
+Activity measurements across three cell lines: HepG2, K562, and SK-N-SH
+Chromosomal location information
+From dataloader_gosai.py, we can see that:
+
+Training uses sequences from chromosomes 1-11
+Validation/testing uses sequences from chromosomes 12-22
+This chromosome-based split prevents genomic proximity bias
+3. Pre-trained Model Output
+The pre-trained diffusion model generates:
+
+640bp DNA sequences consisting of nucleotides (A, C, G, T)
+These sequences mimic the distribution of real enhancer sequences
+Without guidance, these sequences have random functionality
+4. Neural Network for Denoising
+From models/dnaconv.py, DRAKES uses:
+
+A CNN-based architecture with multiple convolutional layers
+Time embedding through a GaussianFourierProjection for conditioning on diffusion step
+Skip connections to maintain information flow
+Fully connected layers with activation functions
+Final projection to logits over the DNA vocabulary (A, C, G, T, plus padding)
+5. Classifier Training
+The classifier (oracle) is trained using train_oracle.py:
+
+Based on the Enformer architecture (pretrained genomic transformer)
+Trained on labeled enhancer sequences from the Gosai dataset
+Predicts activity levels (regression task) for HepG2, K562, and SK-N-SH cell lines
+Model weights saved as reward_oracle_eval.ckpt and reward_oracle_ft.ckpt
+6. Guidance Implementation
+Classifier Guidance (CG):
+Implemented in controlled_sample_CG method
+Uses gradients from the oracle model to steer generation
+Gradient scaling parameter controls guidance strength
+Classifier-Free Guidance (CFG):
+Implemented in diffusion_gosai_cfg.py
+Trains model with both conditional and unconditional paths
+During sampling, interpolates between conditional and unconditional predictions
+Guidance scale parameter controls interpolation strength
+7. Fine-tuning Strategy
+The fine-tuning approach involves:
+
+Starting with the pre-trained diffusion model
+Using the oracle model to provide rewards for generated sequences
+Updating model weights to increase probability of high-reward sequences
+Gradient scaling to balance exploration vs. exploitation
+Pros:
+
+Doesn't require additional labeled data beyond initial training
+Can target specific biological properties
+Maintains sequence diversity better than direct optimization
+Cons:
+
+Relies on accuracy of the oracle model
+Less controllable than direct design methods
+May optimize for "gaming" the oracle rather than true biological function
+Limited by oracle's performance on out-of-distribution sequences
+8. Sequence Generation and Evaluation
+From eval.ipynb and oracle.py:
+
+Generation Methods:
+
+Standard sampling: Basic ancestral sampling from diffusion model
+CFG: Classifier-free guidance with different guidance scales
+CG: Explicit classifier guidance using oracle gradients
+SMC: Sequential Monte Carlo sampling for targeted generation
+TDS: Trajectory Density Sampling for optimizing toward target properties
+Evaluation Methods:
+
+Activity prediction using oracle model
+K-mer distribution analysis to check sequence composition
+Motif enrichment analysis for transcription factor binding sites
+ATAC-seq accessibility prediction
+Comparison to real high-expression sequences
+9. Classifier Details
+The classifier used is:
+
+Based on Enformer architecture
+Modified to predict enhancer activity levels in specific cell types
+Takes 640bp DNA sequences as input
+Outputs activity scores for HepG2, K562, and SK-N-SH cell lines
+Serves as both an evaluation metric and guidance mechanism
+10. Enformer Usage
+Enformer is used as:
+
+The backbone architecture for the oracle model
+A pre-trained model that's fine-tuned on the Gosai dataset
+A regressor for predicting enhancer activity levels
+An evaluation tool for assessing generated sequences
+A guidance mechanism for steering the diffusion process
+The model leverages Enformer's ability to capture long-range interactions in genomic sequences, which is crucial for accurately predicting enhancer activity from sequence context.
